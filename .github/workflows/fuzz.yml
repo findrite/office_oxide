@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust (nightly)
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: nightly
 
@@ -61,8 +61,8 @@ jobs:
       - name: Check the fuzz lockfile is current
         run: cargo metadata --manifest-path fuzz/Cargo.toml --locked --format-version 1 > /dev/null
 
-      - name: Build the fuzz target
-        run: cargo fuzz build fuzz_parse
+      - name: Build the fuzz targets
+        run: cargo fuzz build
 
       # 60 s on every change, 10 min on the daily run. Any crash fails the job.
       - name: Fuzz
@@ -73,9 +73,19 @@ jobs:
           if [ "$EVENT_NAME" = "schedule" ]; then secs=600; fi
           cargo fuzz run fuzz_parse -- -max_total_time="$secs" -rss_limit_mb=4096
 
+      # Whole-file fuzzing rarely reaches the legacy style sheet; this target
+      # builds a valid .doc around the fuzzer's bytes so every run does.
+      - name: Fuzz the .doc style sheet
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          secs=60
+          if [ "$EVENT_NAME" = "schedule" ]; then secs=600; fi
+          cargo fuzz run fuzz_doc_stsh -- -max_total_time="$secs" -rss_limit_mb=4096
+
       - name: Upload crash artifacts
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-artifacts
           path: fuzz/artifacts/

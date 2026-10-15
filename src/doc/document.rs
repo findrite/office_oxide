@@ -13,7 +13,7 @@ use super::papx::{DocParagraph, build_paragraphs, parse_papx_paragraphs};
 use super::piece_table::{
     covers_declared_length, extract_text_range_excluding, parse_clx, sanitize_text,
 };
-use super::styles::{StyleDef, parse_style_sheet};
+use super::styles::parse_style_sheet;
 
 /// A parsed legacy Word document.
 #[derive(Debug)]
@@ -427,6 +427,7 @@ impl DocDocument {
         // Build structured paragraphs (with table / list PAP flags) from the
         // PAPX FKP, when the FIB advertises one. Without it we cannot detect
         // tables or lists, so `doc_to_ir` falls back to the line heuristic.
+        let mut style_warnings: Vec<String> = Vec::new();
         let paragraphs = if fib.fc_plcf_bte_papx != 0 && fib.lcb_plcf_bte_papx != 0 {
             let fkp = parse_papx_paragraphs(
                 &word_doc,
@@ -436,9 +437,12 @@ impl DocDocument {
             );
             // Parse the style sheet so paragraph styles (incl. built-in
             // Heading 1-9 and user-defined "Heading N") can be resolved to a
-            // real heading level. A malformed/absent sheet yields an empty
-            // list and headings fall back to the line heuristic.
-            let styles: Vec<StyleDef> = parse_style_sheet(&table_stream, &fib);
+            // real heading level. A malformed/absent sheet yields no styles,
+            // headings fall back to the line heuristic, and the reason is
+            // reported as a warning rather than dropped.
+            let sheet = parse_style_sheet(&table_stream, &fib);
+            style_warnings = sheet.warnings;
+            let styles = sheet.styles;
             build_paragraphs(
                 &word_doc,
                 &pieces,
@@ -473,7 +477,8 @@ impl DocDocument {
         // A container stream that came back shorter than its declared size
         // lost content just as surely as a piece-table gap.
         let text_complete = text_complete && cfb.truncated_streams().is_empty();
-        let warnings = container_warnings(&cfb);
+        let mut warnings = container_warnings(&cfb);
+        warnings.extend(style_warnings);
 
         Ok(Self {
             text,
@@ -1561,13 +1566,13 @@ mod tests {
     }
 
     #[test]
-    fn test_ir_styled_heading_uses_real_level() {
+    fn test_ir_outline_heading_uses_real_level() {
         use crate::ir::Element;
-        // A styled "Heading 3" paragraph that is NOT the first element must
-        // keep its real level (3) instead of collapsing to the heuristic level
-        // 2 (the `elements.is_empty() ? 1 : 2` rule in `emit_prose`). This is
-        // the regression test for deriving heading levels from paragraph style
-        // rather than the line heuristic.
+        // A paragraph stating outline level 3 (`sprmPOutLvl`) that is NOT the
+        // first element must keep that level instead of collapsing to the
+        // heuristic level 2 (the `elements.is_empty() ? 1 : 2` rule in
+        // `emit_prose`). The style-derived counterpart is
+        // `test_ir_style_derived_heading_uses_real_level`.
         use crate::doc::{LevelSource, OutlineLevel};
         let doc = make_doc_with_paragraphs(vec![
             pap("Intro paragraph.", Default::default()),
@@ -1591,6 +1596,36 @@ mod tests {
             },
             other => panic!("expected a Heading, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_ir_style_derived_heading_uses_real_level() {
+        use crate::doc::{LevelSource, OutlineLevel};
+        use crate::ir::Element;
+        // The same shape, but the level comes from the paragraph's style
+        // (`LevelSource::Style`): it is emitted at its real level and, unlike a
+        // stated level, leaves the line-shape guess switched on for the rest.
+        let doc = make_doc_with_paragraphs(vec![
+            pap("Intro paragraph.", Default::default()),
+            pap(
+                "Subsection",
+                crate::doc::sprm::PapProps {
+                    outline_level: Some(OutlineLevel::Heading {
+                        level: 2,
+                        source: LevelSource::Style,
+                    }),
+                    ..Default::default()
+                },
+            ),
+        ]);
+        let ir = crate::convert_doc::doc_to_ir(&doc);
+        let elements = &ir.sections[0].elements;
+        assert!(matches!(elements[0], Element::Paragraph(_)));
+        assert!(
+            matches!(&elements[1], Element::Heading(h) if h.level == 3),
+            "a style-derived Heading 3 keeps level 3; got {:?}",
+            elements[1]
+        );
     }
 
     /// Regression: MS-DOC outline levels run to `MAX_OUTLINE_LEVEL` but

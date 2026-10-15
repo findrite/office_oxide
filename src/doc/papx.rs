@@ -924,6 +924,8 @@ mod tests {
             StyleDef {
                 sti: 3,
                 name: "Heading 3".into(),
+
+                ..Default::default()
             }, // istd 3: built-in Heading 3
         ];
         let raw = "Subsection\r";
@@ -972,6 +974,8 @@ mod tests {
             StyleDef {
                 sti: 3,
                 name: "Heading 3".into(),
+
+                ..Default::default()
             }, // istd 3: built-in Heading 3
         ];
         let raw = "Subsection\r";
@@ -1022,6 +1026,8 @@ mod tests {
             StyleDef {
                 sti: 0x0FFE,
                 name: "heading 3".into(),
+
+                ..Default::default()
             }, // istd 2: user-defined, name carries level
         ];
         let raw = "Subsection\r";
@@ -1114,6 +1120,8 @@ mod tests {
             StyleDef {
                 sti: 3,
                 name: "Heading 3".into(),
+
+                ..Default::default()
             }, // istd 3: built-in Heading 3
         ];
         let raw = "Section Five\r";
@@ -1165,6 +1173,8 @@ mod tests {
             StyleDef {
                 sti: 3,
                 name: "Heading 3".into(),
+
+                ..Default::default()
             }, // istd 1: a heading style exists in the document
         ];
         let raw = "Ordinary body prose.\r";
@@ -1209,6 +1219,8 @@ mod tests {
             StyleDef {
                 sti: 3,
                 name: "Heading 3".into(),
+
+                ..Default::default()
             }, // istd 3: built-in Heading 3
         ];
         let raw = "Restyled to body text\r";
@@ -1260,6 +1272,8 @@ mod tests {
             StyleDef {
                 sti: 3,
                 name: "Heading 3".into(),
+
+                ..Default::default()
             }, // istd 3: built-in Heading 3
         ];
         let raw = "Not a heading\r";
@@ -1391,7 +1405,7 @@ mod tests {
         let mut table_stream = vec![0u8; start + stsh.len()];
         table_stream[start..start + stsh.len()].copy_from_slice(&stsh);
         let fib = fib_with_stsh(start as u32, stsh.len() as u32);
-        let styles = parse_style_sheet(&table_stream, &fib);
+        let styles = parse_style_sheet(&table_stream, &fib).styles;
         assert_eq!(styles.len(), 15, "the 15 fixed-index LPStd entries");
         assert_eq!(styles[3].sti, 3);
         assert_eq!(styles[3].name, "Heading 3");
